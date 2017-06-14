@@ -25,7 +25,7 @@ const float TARGET_TEMP_TOLERANCE = 1;
 // maximum number of gaps between current and target before changing state
 const float GAP_COUNT_MAX = 12;
 
-enum FermenterState { Off, Idle, Heat, Cool };
+enum ControllerState { Off, Idle, Heat, Cool };
 
 class Controller {
     public:
@@ -33,7 +33,7 @@ class Controller {
         String getName();
         void setOnState(bool on);
         bool getOnState();
-        FermenterState getState();
+        ControllerState getState();
         String getStateFormatted();
         void setCurrentTemp(float tempF); // temporary
         float getCurrentTemp();
@@ -52,12 +52,12 @@ class Controller {
         OneWire _sensor;
         float _currentTemp;
         float _targetTemp;
-        FermenterState _state;
+        ControllerState _state;
         int _gapCount;
         boolean isFloat(String tString);
         float readSensor();
         bool isGoodReading(float tempF);
-        void setState(FermenterState state);
-        String formatState(FermenterState state);
+        void setState(ControllerState state);
+        String formatState(ControllerState state);
         String formatTemp(float tempF);
 };

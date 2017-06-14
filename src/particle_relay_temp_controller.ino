@@ -1,6 +1,4 @@
 #include <Particle.h>
-#include <OneWire.h>
-#include <RelayShield.h>
 #include "Controller.h"
 
 // struct to persist controllers state in EEPROM

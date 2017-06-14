@@ -70,11 +70,11 @@ float Controller::readSensor() {
 
     if (MSB&0x80) {
 	    tempTemp = tempTemp | 0xFFFF0000;
-	} else {
-	    tempTemp = tempTemp & 0x0000FFFF;
-	}
+  	} else {
+  	    tempTemp = tempTemp & 0x0000FFFF;
+  	}
 
-	long longTemp = tempTemp;		// should sign extend
+	  long longTemp = tempTemp;		// should sign extend
 
     float tempRead = longTemp;		// convert to floating
 
@@ -176,7 +176,7 @@ void Controller::update() {
     }
 }
 
-void Controller::setState(FermenterState state) {
+void Controller::setState(ControllerState state) {
     _state = state;
 
     switch(state) {
@@ -196,7 +196,7 @@ void Controller::setState(FermenterState state) {
     }
 }
 
-FermenterState Controller::getState() {
+ControllerState Controller::getState() {
     return _state;
 }
 
@@ -212,7 +212,7 @@ bool Controller::getOnState() {
     return _state != Off;
 }
 
-String Controller::formatState(FermenterState state) {
+String Controller::formatState(ControllerState state) {
     switch(state) {
         case Off:
             return "Off";
