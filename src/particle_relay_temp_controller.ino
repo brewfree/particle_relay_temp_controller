@@ -1,5 +1,6 @@
 #include <Particle.h>
 #include "Controller.h"
+#include "Display.h"
 
 // struct to persist controllers state in EEPROM
 struct ControllerSettings {
@@ -11,13 +12,11 @@ struct ControllerSettings {
 };
 
 // controllers
-Controller ambientController("Ambient", A0, NULL_PIN, NULL_PIN); // only reads temps
-Controller glycolController("Glycol", A1, NULL_PIN, NULL_PIN); // only reads temps
-Controller fermenter1Controller("Brew Bucket", A2, D3, D4);
-Controller fermenter2Controller("Conical", A3, D5, D6);
-
-// how often to update in MS
-const int UPDATE_FREQUENCY = 5000;
+Controller ambientController("Ambient", A0, NULL_PIN, NULL_PIN, false); // only reads temps
+Controller glycolController("Glycol", A1, NULL_PIN, NULL_PIN, false); // only reads temps
+Controller fermenter1Controller("Brew Bucket", A2, D3, D4, false);
+Controller fermenter2Controller("Conical", A3, D5, D6, false);
+Display display;
 
 // particle variables
 String ambient = "";
@@ -29,25 +28,6 @@ String fermenter2Target = "";
 String fermenter2 = "";
 String fermenter2Status = "";
 String fermenter1GapCount = "";
-
-void update() {
-    ambientController.update();
-    ambient = ambientController.getCurrentTempFormatted();
-
-    glycolController.update();
-    glycol = glycolController.getCurrentTempFormatted();
-
-    fermenter1Controller.update();
-    fermenter1 = fermenter1Controller.getCurrentTempFormatted();
-    fermenter1Target = fermenter1Controller.getTargetTempFormatted();
-    fermenter1Status = fermenter1Controller.getStateFormatted();
-    fermenter1GapCount = fermenter1Controller.getGapCount();
-
-    fermenter2Controller.update();
-    fermenter2 = fermenter2Controller.getCurrentTempFormatted();
-    fermenter2Target = fermenter2Controller.getTargetTempFormatted();
-    fermenter2Status = fermenter2Controller.getStateFormatted();
-}
 
 int setFermenter1(String command) {
     int result = fermenter1Controller.control(command);
@@ -87,12 +67,33 @@ void saveSettings() {
     ControllerSettings settings;
 
     settings.version = 0;
-    settings.fermenter1On = false;
+    settings.fermenter1On = fermenter1Controller.getOnState();
     settings.fermenter1TargetTemp = fermenter1Controller.getTargetTemp();
-    settings.fermenter2On = false;
+    settings.fermenter2On = fermenter2Controller.getOnState();
     settings.fermenter2TargetTemp = fermenter2Controller.getTargetTemp();
 
     EEPROM.put(0, settings);
+}
+
+void update() {
+    ambientController.update();
+    ambient = ambientController.getCurrentTempFormatted();
+
+    glycolController.update();
+    glycol = glycolController.getCurrentTempFormatted();
+
+    fermenter1Controller.update();
+    fermenter1 = fermenter1Controller.getCurrentTempFormatted();
+    fermenter1Target = fermenter1Controller.getTargetTempFormatted();
+    fermenter1Status = fermenter1Controller.getStateFormatted();
+    fermenter1GapCount = fermenter1Controller.getGapCount();
+
+    fermenter2Controller.update();
+    fermenter2 = fermenter2Controller.getCurrentTempFormatted();
+    fermenter2Target = fermenter2Controller.getTargetTempFormatted();
+    fermenter2Status = fermenter2Controller.getStateFormatted();
+
+    display.update(fermenter1Controller);
 }
 
 void setup() {
@@ -126,6 +127,6 @@ void setup() {
 }
 
 void loop() {
-    delay(UPDATE_FREQUENCY);
     update();
+    delay(UPDATE_FREQUENCY);
 }

@@ -2,7 +2,7 @@
 #include <OneWire.h>
 #include "Controller.h"
 
-Controller::Controller(String name, int sensorPin, int heaterPin, int coolerPin) : _sensor(sensorPin) {
+Controller::Controller(String name, int sensorPin, int heaterPin, int coolerPin, bool celcius) : _sensor(sensorPin) {
      _sensorPin = sensorPin;
      _heaterPin = heaterPin;
      _coolerPin = coolerPin;
@@ -10,27 +10,179 @@ Controller::Controller(String name, int sensorPin, int heaterPin, int coolerPin)
      _name = name;
      _currentTemp = ERR_SENSOR;
      _targetTemp = TARGET_TEMP_DEFAULT;
+     _isAlarm = false;
+     _celcius = celcius;
      _gapCount = 0;
+     _adjustCount = 0;
 
-     // initialize sensor pin
+     // initialize temp sensor pin
      if(_sensorPin != NULL_PIN) {
          pinMode(_sensorPin, INPUT);
      }
 
-     // initilize relay control pins
+     // initilize heater relay control pin
      if(_heaterPin != NULL_PIN) {
         pinMode(_heaterPin, OUTPUT);
      }
 
+     // initialize cooler relay control pin
      if(_coolerPin != NULL_PIN) {
         pinMode(_coolerPin, OUTPUT);
      }
 }
 
+// get the controller display name
 String Controller::getName() {
     return _name;
 }
 
+// turns the controller on/off
+void Controller::setOnState(bool on) {
+    setState(on ? Idle : Off);
+}
+
+// returns true if the controller is on; false otherwise
+bool Controller::getOnState() {
+    return _state != Off;
+}
+
+// gets the current temperature
+float Controller::getCurrentTemp() {
+    return _currentTemp;
+}
+
+// gets the current temperature as a formatted string
+String Controller::getCurrentTempFormatted() {
+    return formatTemp(_currentTemp);
+}
+
+// this is a temporary method until my parts arrive
+void Controller::setCurrentTemp(float temp) {
+    _currentTemp = temp;
+}
+
+// returns true if the controller is in an alarm state
+bool Controller::getIsAlarm() {
+  return _isAlarm;
+}
+
+// sets the target temperature
+int Controller::setTargetTemp(float temp) {
+    if(!isValidTemp(temp)) {
+        return -1;
+    }
+    _targetTemp = temp;
+    return 0;
+}
+
+// gets the target temperature
+float Controller::getTargetTemp() {
+    return _targetTemp;
+}
+
+// gets the target temperature as a formatted string
+String Controller::getTargetTempFormatted() {
+    return formatTemp(_targetTemp);
+}
+
+// gets the current state of the controller
+ControllerState Controller::getState() {
+    return _state;
+}
+
+// gets the current state of the controller as a formatted string
+String Controller::getStateFormatted() {
+    return formatState(_state);
+}
+
+// gets the next state
+ControllerState Controller::getNextState() {
+    return _nextState;
+}
+
+// gets the next state as a formatted string
+String Controller::getNextStateFormatted() {
+  String nextStateFormatted = formatState(_nextState);
+  if(_gapCount == 0) {
+    return nextStateFormatted;
+  }
+
+  int nextStateInSecs = (GAP_COUNT_MAX - _gapCount) * (UPDATE_FREQUENCY / 1000);
+  String s = String::format(" IN %dS", nextStateInSecs);
+  return nextStateFormatted + s;
+}
+
+// gets the count of the number of updates where the temp is out of tolerance
+int Controller::getGapCount() {
+    return _gapCount;
+}
+
+// call this method in a loop
+void Controller::update() {
+    //_currentTemp = readSensor(); commented out until my hardware arrives
+
+    if((_state != Off) && isValidTemp(_currentTemp)) {
+
+        // calculate temp range +- tolerance
+        float minTemp = _targetTemp - TARGET_TEMP_TOLERANCE;
+        float maxTemp = _targetTemp + TARGET_TEMP_TOLERANCE;
+
+        // is the current temp out of tolerance?
+        if(_currentTemp < minTemp || _currentTemp > maxTemp) {
+
+            // if in idle state (not heating or cooling)
+            if(_state == Idle) {
+
+                // next state is cool
+                if(_currentTemp > maxTemp) {
+                    _nextState = Cool;
+                }
+
+                // next state is heat
+                if(_currentTemp < minTemp) {
+                    _nextState = Heat;
+                }
+
+                _gapCount++; // increase the gap counter
+
+                // adjust to correct gap
+                if(_gapCount >= GAP_COUNT_MAX) {
+
+                  // set the next state
+                  setState(_nextState);
+
+                    // reset gap counter
+                    _gapCount = 0;
+                }
+            }
+            else {
+              // keep track how long we've been heating or cooling
+              _adjustCount++;
+              _nextState = Idle;
+            }
+        }
+        else { // the current temperature is in tolerance
+            setState(Idle); // within range, set to idle
+            _nextState = Idle;
+            _gapCount = 0;
+            _adjustCount = 0;
+        }
+    }
+}
+
+// private methods
+
+// convert to F
+float Controller::convertToF(float tempC) {
+  return (tempC * 1.8) + 32.0;
+}
+
+// convert to C
+float Controller::convertToC(float tempF) {
+  return (tempF - 32) * 0.55;
+}
+
+// reads the ds18b20 temp sensor
 float Controller::readSensor() {
     byte data[12];
     byte addr[8];
@@ -80,102 +232,41 @@ float Controller::readSensor() {
 
     float tempC = tempRead/16.0;
 
-    float tempF = tempC * 1.8 + 32.0; // convert to F
+    // if in F mode, convert to F
+    float temp = _celcius ? tempC : convertToF(tempC);
 
-    if(tempF < SENSOR_MINF || tempF > SENSOR_MAXF) {
+    if(!isValidTemp(temp)) {
         return ERR_READING;
     }
 
-    return tempF;
+    return temp;
 }
 
-float Controller::getCurrentTemp() {
-    return _currentTemp;
-}
-
-void Controller::setCurrentTemp(float tempF) {
-    _currentTemp = tempF;
-}
-
-String Controller::getCurrentTempFormatted() {
-    return formatTemp(_currentTemp);
-}
-
-int Controller::setTargetTemp(float tempF) {
-    if(tempF < TARGET_TEMP_MIN || tempF > TARGET_TEMP_MAX) {
-        return -1;
+// formats the specified temperature
+String Controller::formatTemp(float temp) {
+    if(temp == ERR_SENSOR) {
+        return "NO SENSOR";
     }
-    _targetTemp = tempF;
-    return 0;
-}
-
-float Controller::getTargetTemp() {
-    return _targetTemp;
-}
-
-String Controller::getTargetTempFormatted() {
-    return formatTemp(_targetTemp);
-}
-
-String Controller::formatTemp(float tempF) {
-    if(tempF == ERR_SENSOR) {
-        return "No sensor";
+    if(temp == ERR_CRC) {
+        return "INVALID CRC";
     }
-    if(tempF == ERR_CRC) {
-        return "CRC not valid";
+    if(temp == ERR_DEVICE) {
+        return "DEVICE ERROR";
     }
-    if(tempF == ERR_DEVICE) {
-        return "Device not recognized";
+    if(temp == ERR_READING) {
+        return "BAD READING";
     }
-    if(tempF == ERR_READING) {
-        return "Bad reading";
-    }
-    return String::format("%0.1f°F", tempF);
+    return String::format("%0.1f%1s", temp, _celcius ? "C" : "F");
 }
 
-bool Controller::isGoodReading(float tempF) {
-    return ((tempF > SENSOR_MINF) && (tempF < SENSOR_MAXF));
+// returns true if the temp is valid
+bool Controller::isValidTemp(float temp) {
+  float minTemp = _celcius ? SENSOR_MINC : convertToF(SENSOR_MINC);
+  float maxTemp = _celcius ? SENSOR_MAXC : convertToF(SENSOR_MAXC);
+  return ((temp > minTemp) && (temp < maxTemp));
 }
 
-void Controller::update() {
-    _currentTemp = readSensor();
-
-    if((_state != Off) && isGoodReading(_currentTemp)) {
-
-        // calculate temp range +- tolerance
-        float minTemp = _targetTemp - TARGET_TEMP_TOLERANCE;
-        float maxTemp = _targetTemp + TARGET_TEMP_TOLERANCE;
-
-        // is the current temp out of tolerance?
-        if(_currentTemp < minTemp || _currentTemp > maxTemp) {
-
-            // if in idle state (not heating or cooling)
-            if(_state == Idle) {
-                _gapCount++; // increase the gap counter
-
-                // take action to correct gap
-                if(_gapCount >= GAP_COUNT_MAX) {
-
-                    if(_currentTemp > maxTemp) {
-                        setState(Cool);
-                    }
-
-                    if(_currentTemp < minTemp) {
-                        setState(Heat);
-                    }
-
-                    // reset gap counter
-                    _gapCount = 0;
-                }
-            }
-        }
-        else {
-            setState(Idle); // within rang, set to idle
-            _gapCount = 0;
-        }
-    }
-}
-
+// sets the state of the controller
 void Controller::setState(ControllerState state) {
     _state = state;
 
@@ -196,22 +287,7 @@ void Controller::setState(ControllerState state) {
     }
 }
 
-ControllerState Controller::getState() {
-    return _state;
-}
-
-String Controller::getStateFormatted() {
-    return formatState(_state);
-}
-
-void Controller::setOnState(bool on) {
-    setState(on ? Idle : Off);
-}
-
-bool Controller::getOnState() {
-    return _state != Off;
-}
-
+// formats the specified state
 String Controller::formatState(ControllerState state) {
     switch(state) {
         case Off:
@@ -232,30 +308,39 @@ String Controller::formatState(ControllerState state) {
     }
 }
 
-int Controller::getGapCount() {
-    return _gapCount;
-}
-
-// convenience method for controlling via particle
+// convenience method for controlling with a particle function
+// you can pass in "ON" or "IDLE" to turn on or "OFF" to turn OFF
+// you can set the target temp by passing in a temperature
 int Controller::control(String command) {
-    if(command.toUpperCase() == "IDLE" || command.toUpperCase() == "ON") {
-        setState(Idle);
-        return 0;
-    }
+  // turn on
+  if(command.toUpperCase() == "IDLE" || command.toUpperCase() == "ON") {
+      setState(Idle);
+      return 0;
+  }
 
-    if(command.toUpperCase() == "OFF") {
-        setState(Off);
-        return 0;
-    }
+  // turn off
+  if(command.toUpperCase() == "OFF") {
+      setState(Off);
+      return 0;
+  }
 
-    if(isFloat(command)) {
-        float newSetTemp = command.toFloat();
-        return setTargetTemp(newSetTemp);
-    }
-
+  // invalid command
+  if(!isFloat(command)) {
     return -1;
+  }
+
+  // set target temp
+  float newSetTemp = command.toFloat();
+  if(!isValidTemp(newSetTemp)) {
+    return -1;
+  }
+
+  // set the temp
+  setTargetTemp(newSetTemp);
+  return 0;
 }
 
+// returns true if the specified string is a float
 boolean Controller::isFloat(String tString) {
     String tBuf;
     boolean decPt = false;
